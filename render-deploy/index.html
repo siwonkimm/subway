@@ -1,0 +1,868 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>서울 지하철 실시간 대시보드</title>
+<style>
+@font-face{font-family:'Pretendard Variable';src:local('Pretendard Variable'),local('Pretendard');font-weight:45 920;}
+:root{
+  --bg:#060a14; --surface:#0f1929; --surface2:#131f33; --ink:#e6edf7; --muted:#8395b0; --dim:#56698a;
+  --accent:#38bdf8; --accent2:#818cf8; --green:#34d399; --amber:#fbbf24; --red:#f87171; --deep:#ff3333;
+  --border:rgba(99,179,237,.10); --border2:rgba(99,179,237,.20);
+  --font:'Pretendard Variable',Pretendard,'Apple SD Gothic Neo','Malgun Gothic','Noto Sans KR','Noto Sans CJK KR',sans-serif;
+  --mono:'JetBrains Mono',ui-monospace,'SF Mono',Menlo,Consolas,monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;background:var(--bg);color:var(--ink);font-family:var(--font);overflow:hidden;-webkit-font-smoothing:antialiased;letter-spacing:-.01em}
+body::before{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;
+  background:
+    radial-gradient(1100px 620px at 8% -8%,rgba(56,189,248,.16),transparent 62%),
+    radial-gradient(1000px 620px at 100% 108%,rgba(129,140,248,.17),transparent 60%),
+    linear-gradient(rgba(99,179,237,.045) 1px,transparent 1px) 0 0/36px 36px,
+    linear-gradient(90deg,rgba(99,179,237,.045) 1px,transparent 1px) 0 0/36px 36px;
+  background-attachment:fixed}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+input{font:inherit;color:inherit}
+
+#stage{position:absolute;left:50%;top:50%;width:1920px;height:1080px;padding:28px 32px;z-index:1;
+  display:grid;grid-template-columns:480px 880px 1fr;grid-template-rows:116px 88px 716px 62px;gap:14px 16px;transform-origin:center center}
+.card{position:relative;overflow:hidden;border-radius:16px;border:1px solid var(--border);
+  background:linear-gradient(180deg,rgba(21,34,56,.94),rgba(13,22,37,.94));
+  box-shadow:0 1px 0 rgba(255,255,255,.04) inset,0 14px 34px rgba(0,0,0,.38)}
+.card::before{content:'';position:absolute;left:0;right:0;top:0;height:1px;background:linear-gradient(90deg,transparent,rgba(56,189,248,.55),transparent);opacity:.7}
+.eyebrow{font:600 10.5px/1 var(--mono);letter-spacing:.16em;color:var(--accent);text-transform:uppercase}
+.ph{display:flex;align-items:center;gap:10px;padding:14px 18px 0}
+.ph h2{font-size:15px;font-weight:700;letter-spacing:-.02em}
+.ph .sp{flex:1}
+.tag{font:600 10px/1 var(--mono);letter-spacing:.1em;padding:5px 8px;border-radius:99px;border:1px solid var(--border2);color:var(--muted)}
+.tag.live{color:var(--green);border-color:rgba(52,211,153,.35);background:rgba(52,211,153,.08)}
+.tag.demo{color:var(--amber);border-color:rgba(251,191,36,.35);background:rgba(251,191,36,.08)}
+.ico{width:26px;height:26px;border-radius:8px;display:grid;place-items:center;background:rgba(56,189,248,.1);color:var(--accent)}
+.ico svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+
+@keyframes rise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+.card{animation:rise .7s cubic-bezier(.2,.7,.2,1) both}
+.kpis .card:nth-child(1){animation-delay:.05s}.kpis .card:nth-child(2){animation-delay:.10s}.kpis .card:nth-child(3){animation-delay:.15s}.kpis .card:nth-child(4){animation-delay:.20s}.kpis .card:nth-child(5){animation-delay:.25s}
+.colL .card:nth-child(1){animation-delay:.2s}.colL .card:nth-child(2){animation-delay:.28s}.colL .card:nth-child(3){animation-delay:.36s}
+.mapc{animation-delay:.3s}.colR .card:nth-child(1){animation-delay:.34s}.colR .card:nth-child(2){animation-delay:.42s}
+
+.hdr{grid-column:1/-1;display:grid;grid-template-columns:1fr 330px 690px;align-items:center;padding:0 22px 0 26px;gap:18px}
+.brand{display:flex;align-items:center;gap:16px;min-width:0}
+.logo{width:58px;height:58px;flex:none}
+.brand h1{font-size:27px;font-weight:800;letter-spacing:-.035em;line-height:1.1;margin-top:7px}
+.brand h1 em{font-style:normal;background:linear-gradient(90deg,var(--accent),var(--accent2));-webkit-background-clip:text;background-clip:text;color:transparent}
+.brand .sub{font-size:12px;color:var(--muted);margin-top:6px}
+.clock{text-align:center;position:relative}
+.clock .t{font:700 42px/1 var(--mono);letter-spacing:-.02em;text-shadow:0 0 28px rgba(56,189,248,.35)}
+.clock .t i{font-style:normal;color:var(--accent);animation:blink 1s steps(2,jump-none) infinite}
+@keyframes blink{50%{opacity:.25}}
+.clock .d{font-size:12.5px;color:var(--muted);margin-top:8px;display:flex;justify-content:center;align-items:center;gap:10px}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--green);box-shadow:0 0 0 0 rgba(52,211,153,.6);animation:ping 1.8s infinite}
+.dot.demo{background:var(--amber);animation-name:pingA}
+@keyframes ping{70%{box-shadow:0 0 0 8px rgba(52,211,153,0)}100%{box-shadow:0 0 0 0 rgba(52,211,153,0)}}
+@keyframes pingA{70%{box-shadow:0 0 0 8px rgba(251,191,36,0)}100%{box-shadow:0 0 0 0 rgba(251,191,36,0)}}
+.profile{display:flex;align-items:center;gap:18px;height:100%;padding:6px 0 6px 20px;border-left:1px solid var(--border)}
+.photo{position:relative;width:78px;height:104px;flex:none;border-radius:10px;overflow:hidden;border:1px solid var(--border2);background:#0b1526;cursor:pointer;box-shadow:0 8px 22px rgba(0,0,0,.4)}
+.photo img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.photo .ph-fb{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:5px;padding-bottom:9px;font-size:10.5px;color:var(--muted);text-align:center;line-height:1.3;background:linear-gradient(180deg,#0e1a2e,#0a1322)}
+.photo .ph-fb svg{width:52px;height:52px;fill:#1f3556}
+.photo.has .ph-fb{display:none}
+.pinfo{min-width:0;flex:1}
+.pinfo .nm{display:flex;align-items:baseline;gap:10px}
+.pinfo .nm b{font-size:24px;font-weight:800;letter-spacing:-.03em}
+.pinfo .nm span{font-size:12px;color:var(--muted)}
+.pgrid{display:grid;grid-template-columns:auto 1fr;gap:5px 12px;margin-top:9px;font-size:12.5px}
+.pgrid dt{font:600 10px/18px var(--mono);letter-spacing:.14em;color:var(--dim)}
+.pgrid dd{color:#c5d2e6;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pgrid dd b{color:var(--ink);font-weight:600}
+
+/* ---------- KPI ---------- */
+.kpis{grid-column:1/-1;display:grid;grid-template-columns:repeat(5,1fr);gap:16px}
+.kpi{padding:14px 20px;display:flex;align-items:center;gap:16px}
+.kpi::after{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--kc,var(--accent));box-shadow:0 0 18px var(--kc,var(--accent))}
+.kpi .kic{width:44px;height:44px;border-radius:13px;display:grid;place-items:center;flex:none;background:color-mix(in srgb,var(--kc,var(--accent)) 14%,transparent);color:var(--kc,var(--accent))}
+.kpi .kic svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.kpi .kl{font:600 10.5px/1 var(--mono);letter-spacing:.14em;color:var(--muted)}
+.kpi .kv{font:700 30px/1 var(--mono);letter-spacing:-.03em;margin-top:9px;white-space:nowrap;color:var(--ink)}
+.kpi .kv small{font:600 13px var(--font);color:var(--muted);margin-left:5px;letter-spacing:0}
+.kpi .ks{font-size:12px;color:var(--muted);margin-top:7px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:flex;align-items:center;gap:5px}
+.kpi > div:last-child{min-width:0}
+
+/* ---------- 라인 뱃지 ---------- */
+.lb{display:inline-grid;place-items:center;min-width:22px;height:22px;padding:0 5px;border-radius:99px;font:800 12px/1 var(--font);color:#fff;letter-spacing:0;flex:none;box-shadow:0 0 0 2px rgba(6,10,20,.6)}
+.lb.sm{min-width:18px;height:18px;font-size:10.5px}
+.lb.lg{min-width:34px;height:34px;font-size:16px}
+
+.colL{grid-column:1;grid-row:3;display:grid;grid-template-rows:104px 330px 1fr;gap:14px}
+.plate{display:flex;align-items:center;gap:18px;padding:0 20px}
+.plate .code{width:68px;height:68px;border-radius:18px;flex:none;display:grid;place-items:center;text-align:center;color:#fff;
+  background:var(--lc,#00A84D);box-shadow:0 0 0 3px rgba(255,255,255,.08) inset,0 10px 26px color-mix(in srgb,var(--lc,#00A84D) 55%,transparent)}
+.plate .code b{font:800 25px/1 var(--mono);letter-spacing:-.04em;display:block}
+.plate .code span{font:700 10px/1 var(--font);opacity:.9;margin-top:4px;display:block}
+.plate .nm{flex:1;min-width:0}
+.plate .nm h3{font-size:36px;font-weight:800;letter-spacing:-.045em;line-height:1;white-space:nowrap}
+.plate .nm h3 small{font-size:15px;color:var(--muted);font-weight:600;margin-left:4px;letter-spacing:0}
+.plate .lines{display:flex;gap:6px;margin-top:11px;align-items:center;flex-wrap:wrap}
+.plate .lines .cap{font-size:11.5px;color:var(--muted);margin-left:4px}
+.ring{position:relative;width:58px;height:58px;flex:none}
+.ring svg{width:58px;height:58px;transform:rotate(-90deg)}
+.ring circle{fill:none;stroke-width:4}
+.ring .bg{stroke:rgba(99,179,237,.14)}
+.ring .fg{stroke:var(--accent);stroke-linecap:round;stroke-dasharray:150.8;transition:stroke-dashoffset 1s linear}
+.ring b{position:absolute;inset:0;display:grid;place-items:center;font:700 15px var(--mono)}
+.ring small{position:absolute;left:0;right:0;bottom:-15px;text-align:center;font:600 8.5px var(--mono);letter-spacing:.12em;color:var(--dim)}
+
+.arr{display:flex;flex-direction:column}
+.arr .list{padding:8px 14px 0;flex:1;overflow:hidden}
+.row{display:grid;grid-template-columns:32px 1fr auto 74px;align-items:center;gap:10px;height:44px;padding:0 8px;border-radius:11px;border-bottom:1px solid rgba(99,179,237,.06);transition:background .2s}
+.row:hover{background:rgba(56,189,248,.06)}
+.row .dest{font-size:14px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row .msg{font-size:11.5px;color:var(--muted);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row .dir{font:600 10.5px var(--font);padding:3px 8px;border-radius:99px;background:rgba(129,140,248,.12);color:#aab3ff;white-space:nowrap}
+.row .tm{font:700 18px var(--mono);text-align:right;letter-spacing:-.03em;display:flex;align-items:center;justify-content:flex-end;gap:7px}
+.row .tm i{width:8px;height:8px;border-radius:50%;background:currentColor;box-shadow:0 0 10px currentColor}
+.t-red{color:var(--red)}.t-amb{color:var(--amber)}.t-grn{color:var(--green)}
+.row.now .tm{animation:flash .9s steps(2,jump-none) infinite}
+@keyframes flash{50%{opacity:.35}}
+.empty{height:100%;display:grid;place-items:center;text-align:center;color:var(--muted);font-size:13px;line-height:1.7;padding:0 30px}
+.arr .note{padding:6px 18px 12px;font-size:10.5px;color:var(--dim);display:flex;justify-content:space-between;gap:8px}
+
+.gauge-card{display:flex;flex-direction:column}
+.gwrap{display:flex;align-items:center;gap:6px;padding:0 18px;margin-top:2px}
+.gwrap svg{flex:none}
+.gside{flex:1;min-width:0}
+.lvl{display:inline-flex;align-items:center;gap:7px;font-size:13px;font-weight:800;padding:5px 11px;border-radius:99px;border:1px solid currentColor;background:color-mix(in srgb,currentColor 10%,transparent)}
+.lvl.deep{animation:deep 1.1s ease-in-out infinite}
+@keyframes deep{50%{box-shadow:0 0 22px rgba(255,51,51,.6)}}
+.gside p{font-size:12px;color:var(--muted);margin-top:10px;line-height:1.6}
+.gside p b{color:var(--ink)}
+.hours{padding:0 18px 12px;margin-top:auto}
+.hours .hl{display:flex;justify-content:space-between;font:600 9.5px var(--mono);color:var(--dim);letter-spacing:.06em;margin-bottom:5px}
+
+.mapc{grid-column:2;grid-row:3;display:flex;flex-direction:column}
+.maphead{display:flex;align-items:center;gap:12px;padding:14px 16px 0 18px;height:52px}
+.maphead h2{font-size:15px;font-weight:700;white-space:nowrap}
+.chips{display:flex;gap:5px;margin-left:6px}
+.chip{width:26px;height:26px;border-radius:50%;font:800 12px var(--font);color:#fff;display:grid;place-items:center;border:2px solid transparent;transition:.2s;opacity:1}
+.chip.off{opacity:.28;filter:grayscale(.7)}
+.chip:hover{transform:translateY(-1px)}
+.search{position:relative;width:206px;margin-left:auto}
+.search input{width:100%;height:32px;border-radius:99px;border:1px solid var(--border2);background:rgba(6,10,20,.55);padding:0 14px 0 34px;font-size:13px;outline:none;transition:.2s}
+.search input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(56,189,248,.15)}
+.search svg{position:absolute;left:11px;top:9px;width:14px;height:14px;stroke:var(--muted);fill:none;stroke-width:2;stroke-linecap:round}
+.mapbox{position:relative;margin:6px 16px 0;flex:1;border-radius:12px;background:radial-gradient(120% 90% at 50% 40%,#0c1830,#070d1a);border:1px solid var(--border);overflow:hidden}
+#map{display:block;width:100%;height:100%}
+.st{cursor:pointer}
+.st .hit{fill:transparent}
+.st:hover .dotv{stroke:#fff}
+.slabel{font:600 11.5px var(--font);fill:#c9d6ea;paint-order:stroke;stroke:#070d1a;stroke-width:3.4px;stroke-linejoin:round;pointer-events:none;letter-spacing:-.02em}
+.slabel.on{fill:#fff;font-weight:800}
+#sel .pulse{transform-box:fill-box;transform-origin:center;animation:pulse 1.7s ease-out infinite}
+@keyframes pulse{0%{transform:scale(.6);opacity:.9}100%{transform:scale(3.2);opacity:0}}
+.mtip{position:absolute;pointer-events:none;background:rgba(8,14,26,.94);border:1px solid var(--border2);border-radius:10px;padding:8px 11px;font-size:12px;white-space:nowrap;transform:translate(-50%,-135%);opacity:0;transition:opacity .15s;z-index:3;box-shadow:0 10px 24px rgba(0,0,0,.5)}
+.mtip.show{opacity:1}.mtip b{font-size:13px}.mtip span{display:flex;gap:4px;margin-top:6px}
+.maplegend{position:absolute;left:12px;bottom:10px;font:600 10px var(--mono);letter-spacing:.08em;color:var(--dim);display:flex;gap:14px;align-items:center;background:rgba(6,10,20,.6);padding:6px 10px;border-radius:99px;border:1px solid var(--border)}
+.maplegend i{display:inline-block;vertical-align:middle;margin-right:5px}
+.mapnote{position:absolute;right:12px;bottom:10px;font:500 10px var(--font);color:var(--dim)}
+
+.colR{grid-column:3;grid-row:3;display:grid;grid-template-rows:300px 1fr;gap:14px}
+.chart-card{display:flex;flex-direction:column}
+.chart-card .cbody{padding:6px 14px 0;position:relative}
+#trend{display:block;width:100%;height:auto;overflow:visible}
+.tt{position:absolute;pointer-events:none;background:rgba(8,14,26,.95);border:1px solid var(--border2);border-radius:9px;padding:7px 10px;font-size:11.5px;white-space:nowrap;opacity:0;transform:translate(-50%,-125%);transition:opacity .12s;z-index:4}
+.tt.show{opacity:1}.tt b{font:700 14px var(--mono)}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;padding:6px 18px 0}
+.stat{background:rgba(56,189,248,.05);border:1px solid var(--border);border-radius:10px;padding:8px 10px}
+.stat small{display:block;font:600 9.5px var(--mono);letter-spacing:.1em;color:var(--dim)}
+.stat b{font:700 16px var(--mono);letter-spacing:-.03em}
+.stat em{font-style:normal;font-size:10.5px;color:var(--muted);margin-left:4px}
+.legend{display:flex;gap:14px;padding:8px 18px 12px;font-size:11px;color:var(--muted);align-items:center}
+.legend i{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:5px;vertical-align:0}
+
+.ai{display:flex;flex-direction:column}
+.ai .ph{padding-bottom:0}
+.ai .run{height:30px;padding:0 13px;border-radius:99px;font-size:12px;font-weight:700;color:#06121f;background:linear-gradient(90deg,var(--accent),var(--accent2));box-shadow:0 6px 18px rgba(56,189,248,.28);transition:.2s}
+.ai .run:hover{transform:translateY(-1px);filter:brightness(1.1)}
+.ai .run:disabled{opacity:.6;cursor:progress}
+.aibody{flex:1;overflow:hidden;padding:12px 18px 6px;position:relative}
+.aibody::after{content:'';position:absolute;left:0;right:0;bottom:0;height:26px;background:linear-gradient(transparent,rgba(13,22,37,.95));pointer-events:none}
+.ai-sec{margin-bottom:11px}
+.ai-h{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:800;margin-bottom:4px;letter-spacing:-.01em}
+.ai-h i{width:6px;height:6px;border-radius:2px;background:var(--c)}
+.ai-sec p{font-size:12.5px;line-height:1.62;color:#c2cee2}
+.ai-sec p b{color:#fff;font-weight:700}
+.caret::after{content:'▍';color:var(--accent);margin-left:1px;animation:blink 1s steps(2,jump-none) infinite}
+.ai .foot{padding:8px 18px 12px;font-size:10.5px;color:var(--dim);border-top:1px dashed var(--border)}
+.aiempty{height:100%;display:grid;place-items:center;text-align:center;color:var(--muted);font-size:12.5px;line-height:1.8}
+.aiempty svg{width:34px;height:34px;stroke:var(--accent2);fill:none;stroke-width:1.6;margin:0 auto 10px;display:block}
+
+.foot-band{grid-column:1/-1;position:relative;display:flex;align-items:center;justify-content:space-between;padding:0 22px;overflow:hidden}
+#sky{position:absolute;inset:0;width:100%;height:100%}
+.foot-band .t{position:relative;z-index:2;font-size:12px;color:#a9b8d1;display:flex;align-items:center;gap:12px;text-shadow:0 1px 8px #050912}
+.foot-band .t b{color:#fff;font-weight:700}
+.gear{position:relative;z-index:2;display:flex;align-items:center;gap:8px;height:32px;padding:0 14px;border-radius:99px;border:1px solid var(--border2);background:rgba(6,10,20,.7);font-size:12px;font-weight:600;color:#cfe3fb;transition:.2s}
+.gear:hover{border-color:var(--accent);color:#fff}
+.gear svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+@keyframes run{from{transform:translateX(-320px)}to{transform:translateX(2200px)}}
+@keyframes runr{from{transform:translateX(2200px)}to{transform:translateX(-320px)}}
+.tr1{animation:run 26s linear infinite}.tr2{animation:runr 34s linear infinite -12s}
+@keyframes tw{0%,100%{opacity:.25}50%{opacity:.95}}
+.win{animation:tw 4s ease-in-out infinite}
+
+#modal{position:fixed;inset:0;z-index:50;display:none;place-items:center;background:rgba(3,6,12,.66);backdrop-filter:blur(4px)}
+#modal.show{display:grid}
+.mbox{position:relative;width:min(560px,92vw);padding:26px 28px;border-radius:18px;background:#0f1929;border:1px solid var(--border2);box-shadow:0 30px 80px rgba(0,0,0,.6)}
+.mbox h3{font-size:18px;font-weight:800;margin-bottom:6px}
+.mbox p{font-size:12.5px;color:var(--muted);line-height:1.7;margin-bottom:14px}
+.mbox label{display:block;font:600 10.5px var(--mono);letter-spacing:.12em;color:var(--dim);margin:12px 0 6px}
+.mbox input{width:100%;height:40px;border-radius:10px;border:1px solid var(--border2);background:#08111f;padding:0 12px;font:500 13px var(--mono);outline:none}
+.mbox input:focus{border-color:var(--accent)}
+.mbox .btns{display:flex;justify-content:flex-end;gap:8px;margin-top:20px}
+.mbox .btns button{height:38px;padding:0 18px;border-radius:10px;font-weight:700;font-size:13px;border:1px solid var(--border2)}
+.mbox .btns .pri{background:linear-gradient(90deg,var(--accent),var(--accent2));color:#06121f;border:0}
+.mbox code{font:500 11.5px var(--mono);color:#9fd4f5;background:rgba(56,189,248,.08);padding:2px 6px;border-radius:5px}
+#toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%) translateY(20px);z-index:60;background:rgba(15,25,41,.96);border:1px solid var(--border2);padding:11px 18px;border-radius:12px;font-size:13px;opacity:0;pointer-events:none;transition:.3s}
+#toast.show{opacity:1;transform:translateX(-50%)}
+
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<div id="stage">
+
+  <header class="hdr card">
+    <div class="brand">
+      <svg class="logo" viewBox="0 0 64 64" aria-hidden="true">
+        <defs><linearGradient id="lg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#38bdf8"/><stop offset="1" stop-color="#818cf8"/></linearGradient></defs>
+        <circle cx="32" cy="32" r="29" fill="none" stroke="url(#lg)" stroke-width="3.5"/>
+        <rect x="3" y="26" width="58" height="12" rx="6" fill="url(#lg)"/>
+        <text x="32" y="35.4" text-anchor="middle" font-family="JetBrains Mono,monospace" font-weight="800" font-size="9.5" fill="#06121f" letter-spacing=".6">SEOUL</text>
+      </svg>
+      <div>
+        <div class="eyebrow">Seoul Metro · Live Dashboard</div>
+        <h1>실시간 <em>지하철</em> 대시보드</h1>
+        <div class="sub">서울시 열린데이터광장 · realtimeStationArrival · 1~9호선</div>
+      </div>
+    </div>
+    <div class="clock">
+      <div class="t" id="clk">--<i>:</i>--<i>:</i>--</div>
+      <div class="d"><span id="dt">-</span><span class="tag" id="modeTag">DEMO</span></div>
+    </div>
+    <div class="profile">
+      <div class="photo" id="photoBox" title="클릭하면 사진을 미리 바꿔볼 수 있어요">
+        <img id="photo" alt="증명사진">
+        <div class="ph-fb"><svg viewBox="0 0 64 64"><circle cx="32" cy="22" r="11"/><path d="M8 62c0-15 10-24 24-24s24 9 24 24z"/></svg>증명사진<br>photo.jpg</div>
+      </div>
+      <input type="file" id="photoFile" accept="image/*" hidden>
+      <div class="pinfo">
+        <div class="nm"><b id="pName">-</b><span id="pRole">-</span></div>
+        <dl class="pgrid">
+          <dt>학번 · 소속</dt><dd id="pDept">-</dd>
+          <dt>과목</dt><dd id="pCourse">-</dd>
+          <dt>과제</dt><dd id="pTask">-</dd>
+        </dl>
+      </div>
+    </div>
+  </header>
+
+  <section class="kpis">
+    <div class="card kpi" style="--kc:#38bdf8"><div class="kic"><svg viewBox="0 0 24 24"><path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></svg></div><div><div class="kl">STATION</div><div class="kv" id="k1">-</div><div class="ks" id="k1s">-</div></div></div>
+    <div class="card kpi" style="--kc:#818cf8"><div class="kic"><svg viewBox="0 0 24 24"><rect x="5" y="3" width="14" height="14" rx="4"/><path d="M5 11h14M8 21l2-4M16 21l-2-4"/><circle cx="9" cy="14" r=".6"/><circle cx="15" cy="14" r=".6"/></svg></div><div><div class="kl">ARRIVING TRAINS</div><div class="kv" id="k2">-</div><div class="ks" id="k2s">-</div></div></div>
+    <div class="card kpi" style="--kc:#34d399"><div class="kic"><svg viewBox="0 0 24 24"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l3 2M9 2h6"/></svg></div><div><div class="kl">NEXT TRAIN</div><div class="kv" id="k3">-</div><div class="ks" id="k3s">-</div></div></div>
+    <div class="card kpi" style="--kc:#fbbf24"><div class="kic"><svg viewBox="0 0 24 24"><path d="M4 8h13l-3-3M20 16H7l3 3"/></svg></div><div><div class="kl">TRANSFER LINES</div><div class="kv" id="k4">-</div><div class="ks" id="k4s">-</div></div></div>
+    <div class="card kpi" style="--kc:#f87171" id="kpiCrowd"><div class="kic"><svg viewBox="0 0 24 24"><path d="M4 18a8 8 0 0 1 16 0"/><path d="M12 18l4-6"/></svg></div><div><div class="kl">CROWDING</div><div class="kv" id="k5">-</div><div class="ks" id="k5s">-</div></div></div>
+  </section>
+
+  <section class="colL">
+    <div class="card plate" id="plate">
+      <div class="code" id="pCode"><div><b>--</b><span>-</span></div></div>
+      <div class="nm"><h3 id="pStation">-</h3><div class="lines" id="pLines"></div></div>
+      <div class="ring"><svg viewBox="0 0 58 58"><circle class="bg" cx="29" cy="29" r="24"/><circle class="fg" id="ringFg" cx="29" cy="29" r="24"/></svg><b id="ringNum">30</b><small>REFRESH</small></div>
+    </div>
+
+    <div class="card arr">
+      <div class="ph"><span class="ico"><svg viewBox="0 0 24 24"><rect x="5" y="3" width="14" height="14" rx="4"/><path d="M5 11h14M8 21l2-4M16 21l-2-4"/></svg></span><h2>실시간 도착 정보</h2><span class="sp"></span><span class="tag" id="arrTag">-</span></div>
+      <div class="list" id="arrList"></div>
+      <div class="note"><span>🔴 60초 이내 · 🟡 60~120초 · 🟢 120초 이상</span><span id="arrSrc">-</span></div>
+    </div>
+
+    <div class="card gauge-card">
+      <div class="ph"><span class="ico"><svg viewBox="0 0 24 24"><path d="M4 18a8 8 0 0 1 16 0"/><path d="M12 18l4-6"/></svg></span><h2>현재 혼잡도</h2><span class="sp"></span><span class="tag" id="crowdTag">SAMPLE MODEL</span></div>
+      <div class="gwrap">
+        <svg width="272" height="150" viewBox="0 0 272 150" id="gauge" aria-label="혼잡도 게이지"></svg>
+        <div class="gside"><span class="lvl" id="lvl">-</span><p id="lvlTxt">-</p></div>
+      </div>
+      <div class="hours"><div class="hl"><span>00</span><span>06</span><span>12</span><span>18</span><span>24</span></div><svg id="hours" viewBox="0 0 444 44" width="100%" height="44"></svg></div>
+    </div>
+  </section>
+
+  <section class="card mapc">
+    <div class="maphead">
+      <span class="ico"><svg viewBox="0 0 24 24"><path d="M3 6l6-2 6 2 6-2v14l-6 2-6-2-6 2z"/><path d="M9 4v14M15 6v14"/></svg></span>
+      <h2>실시간 노선도</h2>
+      <div class="chips" id="chips"></div>
+      <div class="search"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg><input id="q" list="stlist" placeholder="역 검색 (예: 강남)" autocomplete="off"><datalist id="stlist"></datalist></div>
+    </div>
+    <div class="mapbox" id="mapbox">
+      <svg id="map" viewBox="0 0 848 640" preserveAspectRatio="xMidYMid meet"></svg>
+      <div class="mtip" id="mtip"></div>
+      <div class="maplegend"><span><i class="lb sm" style="background:#0b1424;border:1.6px solid #e6edf7;min-width:11px;height:11px;padding:0"></i>환승역</span><span><i class="lb sm" style="background:#8395b0;min-width:8px;height:8px;padding:0"></i>일반역</span><span>CLICK = 도착 조회</span></div>
+      <div class="mapnote">※ 역 위치는 실제 위경도 기반의 근사값(모식도)</div>
+    </div>
+    <div style="height:16px"></div>
+  </section>
+
+  <section class="colR">
+    <div class="card chart-card">
+      <div class="ph"><span class="ico"><svg viewBox="0 0 24 24"><path d="M3 17l5-6 4 3 8-9"/><path d="M3 21h18"/></svg></span><h2>최근 30일 혼잡도 추이</h2><span class="sp"></span><span class="tag">SAMPLE MODEL</span></div>
+      <div class="cbody"><svg id="trend" viewBox="0 0 432 196"></svg><div class="tt" id="tt"></div></div>
+      <div class="stats"><div class="stat"><small>AVG</small><b id="sAvg">-</b><em>평균</em></div><div class="stat"><small>PEAK</small><b id="sMax">-</b><em id="sMaxD">-</em></div><div class="stat"><small>LOW</small><b id="sMin">-</b><em id="sMinD">-</em></div></div>
+      <div class="legend"><span><i style="background:#38bdf8"></i>평일</span><span><i style="background:#fbbf24"></i>주말(토·일)</span><span style="margin-left:auto;color:var(--dim)">점 위에 마우스를 올려보세요</span></div>
+    </div>
+
+    <div class="card ai">
+      <div class="ph"><span class="ico" style="background:rgba(129,140,248,.14);color:#a5b0ff"><svg viewBox="0 0 24 24"><path d="M12 3l1.8 4.6L18.5 9l-4.7 1.4L12 15l-1.8-4.6L5.5 9l4.7-1.4z"/><path d="M18 15l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z"/></svg></span><h2>AI 교통 분석</h2><span class="tag">RULE-BASED · LOCAL</span><span class="sp"></span><button class="run" id="aiRun">분석 실행</button></div>
+      <div class="aibody" id="aiBody"></div>
+      <div class="foot">현재 도착 정보·혼잡도·시간대 규칙으로 문장을 생성합니다. 외부 AI 서버를 호출하지 않아요.</div>
+    </div>
+  </section>
+
+  <footer class="card foot-band">
+    <svg id="sky" preserveAspectRatio="none" viewBox="0 0 1856 62"></svg>
+    <div class="t"><b>SEOUL · NIGHT LINE</b><span id="footTxt">-</span></div>
+    <button class="gear" id="gear"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>API 설정</button>
+  </footer>
+</div>
+
+<div id="modal"><div class="mbox">
+  <h3>서울시 실시간 API 설정</h3>
+  <p>열린데이터광장에서 발급받은 <b>실시간 지하철 인증키</b>를 입력하면 실제 도착 정보를 조회합니다. 키가 없거나 호출이 막히면 <b>DEMO(시뮬레이션)</b> 데이터로 자동 전환돼요.<br>※ 로컬 파일(file://)에서는 브라우저 CORS 정책 때문에 직접 호출이 차단될 수 있어, 교재 3장의 프록시 주소를 함께 넣으면 안정적입니다.</p>
+  <label>API KEY</label><input id="keyIn" placeholder="예: 685a4d4b... (기본값: sample)" spellcheck="false">
+  <label>PROXY URL (선택)</label><input id="proxyIn" placeholder="예: https://내프록시.onrender.com/api/subway" spellcheck="false">
+  <label>혼잡도 API KEY</label><input id="ckeyIn" placeholder="열린데이터광장 일반 인증키" spellcheck="false">
+  <label>혼잡도 PROXY URL (선택)</label><input id="cproxyIn" placeholder="예: https://내프록시.onrender.com/openapi" spellcheck="false">
+  <div class="btns"><button id="mCancel">취소</button><button class="pri" id="mSave">저장하고 새로고침</button></div>
+</div></div>
+<div id="toast"></div>
+
+<script>
+(function(){
+'use strict';
+const PROFILE = {
+  name:'김시원',
+  role:'과제 제출자',
+  studentId:'학번 20XXXXXXXX',
+  dept:'○○대학교 ○○학과',
+  course:'AI 대시보드 · 3주차',
+  task:'실시간 지하철 대시보드 (서울시 API)',
+  date:'2026.09.28',
+  photo:'photo.jpg'
+};
+const CONFIG = {
+  KEY:'5a5656505173697732396a4249494a',        // 실시간 지하철 도착정보 인증키 (swopenapi.seoul.go.kr)
+  CROWD_KEY:'6a616e74737369773933575a6c6574',  // 혼잡도용 열린데이터광장 일반 인증키 (openapi.seoul.go.kr:8088)
+  CROWD_SERVICE:'CardSubwayTime',              // 혼잡도 산출에 쓰는 서비스명 (역별 시간대별 승하차 인원). 다른 API면 여기만 교체
+  PROXY:'/api/subway',   // 도착정보 프록시 (server.js가 같은 주소에서 대신 호출)
+  CROWD_PROXY:'/openapi',  // 혼잡도 프록시 (server.js)
+  REFRESH_SEC:30
+};
+
+const $=(s,r)=>(r||document).querySelector(s);
+const NS='http://www.w3.org/2000/svg';
+const el=(tag,attrs,parent)=>{const e=document.createElementNS(NS,tag);for(const k in attrs)e.setAttribute(k,attrs[k]);if(parent)parent.appendChild(e);return e;};
+const pad=n=>String(n).padStart(2,'0');
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+const store={get(k){try{return localStorage.getItem(k)}catch(e){return null}},set(k,v){try{localStorage.setItem(k,v)}catch(e){}}};
+function hash(s){let h=2166136261;for(let i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,16777619)}return h>>>0}
+function rng(seed){return function(){seed|=0;seed=seed+0x6D2B79F5|0;let t=Math.imul(seed^seed>>>15,1|seed);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+function toast(msg){const t=$('#toast');t.textContent=msg;t.classList.add('show');clearTimeout(toast.t);toast.t=setTimeout(()=>t.classList.remove('show'),2600)}
+
+const LC={1:'#0052A4',2:'#00A84D',3:'#EF7C1C',4:'#00A5DE',5:'#996CAC',6:'#CD7C2F',7:'#747F00',8:'#E6186C',9:'#BDB092'};
+const LM={1:'#3b86e6',2:'#00c25a',3:'#ff8a2b',4:'#22b8ee',5:'#b083c4',6:'#d98a3c',7:'#9db31a',8:'#f0357f',9:'#cfc3a6'};
+const G={
+'시청':[37.5657,126.9769],'을지로입구':[37.5660,126.9822],'을지로3가':[37.5663,126.9917],'을지로4가':[37.5667,126.9978],'동대문역사문화공원':[37.5651,127.0079],
+'신당':[37.5657,127.0173],'상왕십리':[37.5643,127.0293],'왕십리':[37.5612,127.0371],'한양대':[37.5556,127.0439],'뚝섬':[37.5471,127.0473],'성수':[37.5445,127.0559],
+'건대입구':[37.5404,127.0692],'구의':[37.5372,127.0858],'강변':[37.5350,127.0946],'잠실나루':[37.5207,127.1037],'잠실':[37.5133,127.1001],'잠실새내':[37.5117,127.0863],
+'종합운동장':[37.5109,127.0736],'삼성':[37.5088,127.0631],'선릉':[37.5045,127.0490],'역삼':[37.5006,127.0364],'강남':[37.4979,127.0276],'교대':[37.4934,127.0140],
+'서초':[37.4919,127.0077],'방배':[37.4814,126.9976],'사당':[37.4765,126.9816],'낙성대':[37.4769,126.9637],'서울대입구':[37.4813,126.9527],'봉천':[37.4824,126.9417],
+'신림':[37.4842,126.9296],'신대방':[37.4875,126.9130],'구로디지털단지':[37.4852,126.9015],'대림':[37.4925,126.8952],'신도림':[37.5088,126.8913],'문래':[37.5175,126.8949],
+'영등포구청':[37.5257,126.8965],'당산':[37.5346,126.9026],'합정':[37.5495,126.9139],'홍대입구':[37.5570,126.9245],'신촌':[37.5551,126.9367],'이대':[37.5568,126.9464],
+'아현':[37.5573,126.9560],'충정로':[37.5599,126.9635],
+'서울역':[37.5547,126.9707],'종각':[37.5702,126.9831],'종로3가':[37.5704,126.9922],'동대문':[37.5711,127.0095],'동묘앞':[37.5727,127.0163],'신설동':[37.5759,127.0246],
+'청량리':[37.5804,127.0470],'용산':[37.5299,126.9648],'노량진':[37.5133,126.9425],'영등포':[37.5155,126.9075],'구로':[37.5030,126.8819],'가산디지털단지':[37.4816,126.8827],
+'연신내':[37.6190,126.9209],'불광':[37.6104,126.9299],'경복궁':[37.5759,126.9735],'안국':[37.5766,126.9854],'충무로':[37.5612,126.9943],'약수':[37.5545,127.0102],
+'옥수':[37.5406,127.0175],'압구정':[37.5270,127.0284],'신사':[37.5164,127.0203],'고속터미널':[37.5049,127.0049],'양재':[37.4844,127.0345],'수서':[37.4875,127.1019],
+'혜화':[37.5822,127.0018],'명동':[37.5609,126.9863],'삼각지':[37.5347,126.9731],'동작':[37.5028,126.9803],'이수':[37.4863,126.9819],'김포공항':[37.5624,126.8017],
+'여의도':[37.5216,126.9243],'공덕':[37.5440,126.9516],'광화문':[37.5710,126.9768],'청구':[37.5601,127.0139],'군자':[37.5571,127.0794],'천호':[37.5385,127.1236],
+'강동':[37.5359,127.1324],'이태원':[37.5345,126.9944],'고려대':[37.5905,127.0362],'노원':[37.6553,127.0613],'상봉':[37.5960,127.0855],'청담':[37.5197,127.0533],
+'강남구청':[37.5171,127.0413],'논현':[37.5111,127.0215],'보라매':[37.4998,126.9202],'암사':[37.5501,127.1273],'몽촌토성':[37.5179,127.1123],'가락시장':[37.4924,127.1182],
+'복정':[37.4700,127.1265],'모란':[37.4322,127.1290],'마곡나루':[37.5666,126.8271],'신논현':[37.5046,127.0250],'선정릉':[37.5104,127.0439],'중앙보훈병원':[37.5285,127.1489]};
+const LOOP=['시청','을지로입구','을지로3가','을지로4가','동대문역사문화공원','신당','상왕십리','왕십리','한양대','뚝섬','성수','건대입구','구의','강변','잠실나루','잠실','잠실새내','종합운동장','삼성','선릉','역삼','강남','교대','서초','방배','사당','낙성대','서울대입구','봉천','신림','신대방','구로디지털단지','대림','신도림','문래','영등포구청','당산','합정','홍대입구','신촌','이대','아현','충정로'];
+const LINES={
+ 1:['가산디지털단지','구로','신도림','영등포','노량진','용산','서울역','시청','종각','종로3가','동대문','동묘앞','신설동','청량리'],
+ 2:LOOP,
+ 3:['연신내','불광','경복궁','안국','종로3가','을지로3가','충무로','약수','옥수','압구정','신사','고속터미널','교대','양재','수서'],
+ 4:['혜화','동대문','동대문역사문화공원','충무로','명동','서울역','삼각지','동작','이수','사당'],
+ 5:['김포공항','영등포구청','여의도','공덕','충정로','광화문','종로3가','을지로4가','동대문역사문화공원','왕십리','군자','천호','강동'],
+ 6:['합정','공덕','삼각지','이태원','약수','청구','신당','동묘앞','고려대'],
+ 7:['노원','상봉','군자','건대입구','청담','강남구청','논현','고속터미널','이수','보라매','대림','가산디지털단지'],
+ 8:['암사','천호','몽촌토성','잠실','가락시장','복정','모란'],
+ 9:['김포공항','마곡나루','당산','여의도','노량진','동작','고속터미널','신논현','선정릉','종합운동장','중앙보훈병원']
+};
+const ENDS={1:'청량리',3:'수서',4:'혜화',5:'강동',6:'고려대',7:'노원',8:'모란',9:'중앙보훈병원'};
+const TERM={1:['소요산','인천'],3:['대화','오금'],4:['당고개','오이도'],5:['방화','상일동'],6:['응암','응암'],7:['장암','부평구청'],8:['암사','모란'],9:['개화','중앙보훈병원']};
+const API_NAME={'서울역':'서울','이수':'총신대입구(이수)','군자':'군자(능동)','몽촌토성':'몽촌토성(평화의문)'};
+const HUB={'강남':1,'잠실':.95,'홍대입구':.95,'신도림':.95,'고속터미널':.93,'사당':.9,'서울역':.9,'왕십리':.86,'건대입구':.84,'선릉':.88,'교대':.86,'역삼':.82,'삼성':.8,
+ '종로3가':.8,'동대문역사문화공원':.78,'여의도':.86,'합정':.82,'신촌':.76,'시청':.82,'공덕':.78,'노량진':.76,'을지로입구':.74,'용산':.72,'성수':.72,'종합운동장':.62,'가산디지털단지':.74,'구로디지털단지':.7};
+const STATIONS={};
+Object.keys(LINES).forEach(l=>LINES[l].forEach(n=>{(STATIONS[n]=STATIONS[n]||{lines:[]}).lines.push(+l)}));
+Object.keys(STATIONS).forEach(n=>STATIONS[n].lines.sort((a,b)=>a-b));
+const hubOf=n=>HUB[n]||(0.42+rng(hash(n))()*0.26);
+
+const S={station:'강남',arr:[],mode:'demo',modeWhy:'',key:(store.get('sm_key')&&store.get('sm_key')!=='sample')?store.get('sm_key'):CONFIG.KEY,proxy:store.get('sm_proxy')||CONFIG.PROXY,
+  crowdKey:store.get('sm_ckey')||CONFIG.CROWD_KEY,crowdProxy:store.get('sm_cproxy')||CONFIG.CROWD_PROXY,crowd:null,crowdCache:{},crowdWhy:'',
+  hidden:new Set(),lastFetch:0,queues:{},typing:null,aiTimer:null,loading:false};
+
+function initProfile(){
+  $('#pName').textContent=PROFILE.name;$('#pRole').textContent=PROFILE.role;
+  $('#pDept').innerHTML='<b>'+PROFILE.studentId+'</b> · '+PROFILE.dept;
+  $('#pCourse').textContent=PROFILE.course;
+  $('#pTask').innerHTML='<b>'+PROFILE.task+'</b> · '+PROFILE.date;
+  const img=$('#photo'),box=$('#photoBox');
+  img.onload=()=>box.classList.add('has');img.onerror=()=>box.classList.remove('has');
+  img.src=PROFILE.photo;
+  box.addEventListener('click',()=>$('#photoFile').click());
+  $('#photoFile').addEventListener('change',e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{img.src=r.result};r.readAsDataURL(f)});
+}
+
+const MW=848,MH=640,B={latMin:37.418,latMax:37.667,lonMin:126.784,lonMax:127.168},KX=88.4,KY=111;
+const SC=Math.min(MW/((B.lonMax-B.lonMin)*KX),MH/((B.latMax-B.latMin)*KY));
+const OX=(MW-(B.lonMax-B.lonMin)*KX*SC)/2,OY=(MH-(B.latMax-B.latMin)*KY*SC)/2;
+const P=n=>{const g=G[n];return[OX+(g[1]-B.lonMin)*KX*SC,OY+(B.latMax-g[0])*KY*SC]};
+function spline(pts,closed,k){
+  const n=pts.length;let d='M'+pts[0][0].toFixed(1)+' '+pts[0][1].toFixed(1);
+  const g=i=>closed?pts[(i+n)%n]:pts[clamp(i,0,n-1)];
+  const segs=closed?n:n-1;
+  for(let i=0;i<segs;i++){
+    const p0=g(i-1),p1=g(i),p2=g(i+1),p3=g(i+2);
+    d+=' C'+(p1[0]+(p2[0]-p0[0])*k).toFixed(1)+' '+(p1[1]+(p2[1]-p0[1])*k).toFixed(1)+' '+(p2[0]-(p3[0]-p1[0])*k).toFixed(1)+' '+(p2[1]-(p3[1]-p1[1])*k).toFixed(1)+' '+p2[0].toFixed(1)+' '+p2[1].toFixed(1);
+  }
+  return d;
+}
+const LBL={
+ '시청':'l','서울역':'l','종로3가':'t','동대문역사문화공원':'b','왕십리':'b','건대입구':'r','잠실':'r','종합운동장':'b','강남':'r','교대':'l','사당':'b','신림':'b','대림':'l','신도림':'l',
+ '당산':'l','합정':'l','홍대입구':'l','신촌':'t','충정로':'t','성수':'t','선릉':'r','청량리':'r','수서':'r','노원':'r','상봉':'r','양재':'r','암사':'r','모란':'r','김포공항':'b',
+ '마곡나루':'t','이태원':'r','압구정':'r','노량진':'l','용산':'l','삼각지':'l','여의도':'l','공덕':'t','고속터미널':'l','가산디지털단지':'l','중앙보훈병원':'l','군자':'t','천호':'r','복정':'r','고려대':'r','혜화':'t','연신내':'r','동작':'l','보라매':'b','영등포':'l','종각':'t'
+};
+const MAJOR=new Set(Object.keys(LBL));
+let SEL_G,STG,LINEG={};
+function drawMap(){
+  const svg=$('#map');svg.innerHTML='';
+  const defs=el('defs',{},svg);
+  const f=el('filter',{id:'glow',x:'-30%',y:'-30%',width:'160%',height:'160%'},defs);
+  el('feGaussianBlur',{stdDeviation:'3.2',result:'b'},f);
+  const mg=el('feMerge',{},f);el('feMergeNode',{in:'b'},mg);el('feMergeNode',{in:'SourceGraphic'},mg);
+  const rg=el('linearGradient',{id:'river',x1:'0',y1:'0',x2:'1',y2:'0'},defs);
+  el('stop',{offset:'0','stop-color':'#1b4a80','stop-opacity':.05},rg);el('stop',{offset:'.5','stop-color':'#2a78c0','stop-opacity':.42},rg);el('stop',{offset:'1','stop-color':'#1b4a80','stop-opacity':.08},rg);
+
+  const gr=el('g',{opacity:.5},svg);
+  for(let x=0;x<=MW;x+=53)el('line',{x1:x,y1:0,x2:x,y2:MH,stroke:'rgba(99,179,237,.06)'},gr);
+  for(let y=0;y<=MH;y+=53)el('line',{x1:0,y1:y,x2:MW,y2:y,stroke:'rgba(99,179,237,.06)'},gr);
+  const river=[[37.600,126.788],[37.586,126.810],[37.574,126.833],[37.561,126.865],[37.547,126.897],[37.537,126.922],[37.526,126.944],[37.518,126.967],[37.515,126.992],[37.522,127.012],[37.531,127.030],[37.535,127.052],[37.534,127.075],[37.529,127.095],[37.534,127.118],[37.545,127.145],[37.552,127.168]];
+  const rp=river.map(r=>[OX+(r[1]-B.lonMin)*KX*SC,OY+(B.latMax-r[0])*KY*SC]);
+  el('path',{d:spline(rp,false,.16),fill:'none',stroke:'url(#river)','stroke-width':17,'stroke-linecap':'round','stroke-linejoin':'round'},svg);
+  const rt=el('text',{x:rp[5][0]-4,y:rp[5][1]+26,class:'slabel',style:'fill:#3f7bb8;font-style:italic;font-weight:500;stroke-width:0;font-size:10.5px;letter-spacing:.3em'},svg);rt.textContent='한  강';
+
+  const lg=el('g',{},svg);
+  [1,3,4,5,6,7,8,9,2].forEach(l=>{
+    const pts=LINES[l].map(P);const closed=l===2;
+    const g=el('g',{'data-line':l,style:'transition:opacity .25s'},lg);LINEG[l]=g;
+    el('path',{d:spline(pts,closed,closed?.16:.11),fill:'none',stroke:LM[l],'stroke-width':l===2?5:3.6,'stroke-linecap':'round','stroke-linejoin':'round',opacity:.96},g);
+  });
+  const eg=el('g',{},svg);
+  Object.keys(ENDS).forEach(l=>{const p=P(ENDS[l]);const g=el('g',{'data-line':l},eg);LINEG['e'+l]=g;
+    const dx=(l==='9'||l==='4')?-17:(l==='3'||l==='8')?0:17,dy=(l==='3'||l==='8')?18:(l==='4'?-14:(l==='7')?-14:0);
+    el('circle',{cx:p[0]+dx,cy:p[1]+dy,r:9,fill:LC[l],stroke:'#070d1a','stroke-width':2},g);
+    const t=el('text',{x:p[0]+dx,y:p[1]+dy+3.6,'text-anchor':'middle',style:'font:800 11px Pretendard Variable,Pretendard,sans-serif;fill:#fff'},g);t.textContent=l;});
+  {const p=P('성수');const g=el('g',{'data-line':2},eg);LINEG['e2']=g;
+    el('circle',{cx:p[0]+18,cy:p[1]-12,r:9,fill:LC[2],stroke:'#070d1a','stroke-width':2},g);
+    const t=el('text',{x:p[0]+18,y:p[1]-8.4,'text-anchor':'middle',style:'font:800 11px Pretendard Variable,Pretendard,sans-serif;fill:#fff'},g);t.textContent='2';}
+
+  STG=el('g',{},svg);
+  Object.keys(STATIONS).forEach(n=>{
+    const st=STATIONS[n],p=P(n),inter=st.lines.length>1;
+    const g=el('g',{class:'st','data-n':n,transform:'translate('+p[0].toFixed(1)+' '+p[1].toFixed(1)+')'},STG);
+    el('circle',{class:'hit',r:9},g);
+    if(inter)el('circle',{class:'dotv',r:5,fill:'#0b1424',stroke:'#e6edf7','stroke-width':1.7},g);
+    else el('circle',{class:'dotv',r:3,fill:LM[st.lines[0]],stroke:'#0b1424','stroke-width':1.4},g);
+    if(MAJOR.has(n)){
+      const pos=LBL[n]||'r';const off=inter?9:7;
+      const a=pos==='r'?[off,4,'start']:pos==='l'?[-off,4,'end']:pos==='t'?[0,-off-1,'middle']:[0,off+10,'middle'];
+      const t=el('text',{class:'slabel',x:a[0],y:a[1],'text-anchor':a[2]},g);t.textContent=n;
+    }
+    g.addEventListener('click',()=>selectStation(n));
+    g.addEventListener('mouseenter',()=>tip(n,p));
+    g.addEventListener('mouseleave',()=>$('#mtip').classList.remove('show'));
+  });
+  SEL_G=el('g',{id:'sel',style:'pointer-events:none'},svg);
+}
+function tip(n,p){
+  const t=$('#mtip'),box=$('#mapbox').getBoundingClientRect();
+  const svgEl=$('#map'),svg=svgEl.getBoundingClientRect();
+  const s=Math.min(svg.width/MW,svg.height/MH),ox=(svg.width-MW*s)/2,oy=(svg.height-MH*s)/2;
+  const bx=(svg.left-box.left),by=(svg.top-box.top);
+  const k=box.width/$('#mapbox').offsetWidth;
+  t.style.left=((bx+ox+p[0]*s)/k)+'px';t.style.top=((by+oy+p[1]*s)/k)+'px';
+  const st=STATIONS[n];
+  t.innerHTML='<b>'+n+'</b><span>'+st.lines.map(l=>'<i class="lb sm" style="background:'+LC[l]+'">'+l+'</i>').join('')+'</span>';
+  t.classList.add('show');
+}
+function markSelected(){
+  SEL_G.innerHTML='';const n=S.station,p=P(n),c=LM[STATIONS[n].lines[0]];
+  const g=el('g',{transform:'translate('+p[0]+' '+p[1]+')'},SEL_G);
+  el('circle',{class:'pulse',r:8,fill:c,opacity:.6},g);
+  el('circle',{r:9.5,fill:'none',stroke:'#fff','stroke-width':2.4},g);
+  el('circle',{r:5.5,fill:c,stroke:'#fff','stroke-width':1.6},g);
+  STG.querySelectorAll('.slabel').forEach(t=>t.classList.remove('on'));
+  const cur=STG.querySelector('[data-n="'+n+'"]');
+  if(cur&&!cur.querySelector('.slabel')){const t=el('text',{class:'slabel on',x:12,y:4,'text-anchor':'start'},cur);t.textContent=n;t.dataset.tmp='1';}
+  else if(cur){cur.querySelector('.slabel').classList.add('on')}
+  STG.querySelectorAll('[data-tmp]').forEach(t=>{if(t.parentNode.dataset.n!==n)t.remove()});
+  const ls=STATIONS[n].lines;
+  Object.keys(LINEG).forEach(k=>{const l=k.replace('e','');const dim=!ls.includes(+l);LINEG[k].style.opacity=S.hidden.has(+l)?.06:(dim?.34:1)});
+  if(LINEG['e2'])LINEG['e2'].style.opacity=S.hidden.has(2)?.06:(ls.includes(2)?1:.34);
+}
+function buildChips(){
+  const c=$('#chips');c.innerHTML='';
+  for(let l=1;l<=9;l++){const b=document.createElement('button');b.className='chip';b.textContent=l;b.style.background=LC[l];b.title=l+'호선 켜기/끄기';
+    b.addEventListener('click',()=>{if(S.hidden.has(l))S.hidden.delete(l);else S.hidden.add(l);b.classList.toggle('off',S.hidden.has(l));applyHidden()});c.appendChild(b)}
+}
+function applyHidden(){
+  STG.querySelectorAll('.st').forEach(g=>{const st=STATIONS[g.dataset.n];const vis=st.lines.some(l=>!S.hidden.has(l));g.style.opacity=vis?1:.08;g.style.pointerEvents=vis?'auto':'none'});
+  markSelected();
+}
+
+const apiName=n=>API_NAME[n]||n;
+function dirKind(d){return (d==='상행'||d==='내선')?'up':'dn'}
+async function fetchLive(n){
+  const key=S.key||'sample';
+  if(key==='sample'&&apiName(n)!=='서울')throw new Error('sample 키는 서울역만 조회할 수 있어요');
+  const base=S.proxy?S.proxy.replace(/\/$/,''):'http://swopenapi.seoul.go.kr/api/subway';
+  if(!S.proxy&&location.protocol==='https:')throw new Error('https 페이지에서는 http API 호출이 차단돼요');
+  const url=base+'/'+encodeURIComponent(key)+'/json/realtimeStationArrival/0/20/'+encodeURIComponent(apiName(n));
+  const ctl=new AbortController();const to=setTimeout(()=>ctl.abort(),6500);
+  let j;try{const r=await fetch(url,{signal:ctl.signal});j=await r.json()}finally{clearTimeout(to)}
+  if(j&&j.errorMessage&&j.errorMessage.code&&j.errorMessage.code!=='INFO-000')throw new Error(j.errorMessage.message||'API 오류');
+  const list=(j&&j.realtimeArrivalList)||[];const now=Date.now();
+  return list.map(r=>{
+    const sid=String(r.subwayId||'');const line=/^100[1-9]$/.test(sid)?+sid.slice(-1):({1063:'경의중앙',1065:'공항',1067:'경춘',1075:'수인분당',1077:'신분당',1092:'우이신설',1032:'GTX-A'})[sid]||'?';
+    let secs=parseInt(r.barvlDt,10);
+    if(!(secs>0)){const m=/(\d+)분\s*(?:(\d+)초)?/.exec(r.arvlMsg2||'');if(m)secs=(+m[1])*60+(+(m[2]||0));else secs=0}
+    if(r.recptnDt){const t=Date.parse(String(r.recptnDt).replace(' ','T'));if(t&&secs>0)secs=Math.max(0,secs-Math.max(0,(now-t)/1000))}
+    return{line,dir:r.updnLine||'',dest:(r.bstatnNm||'').replace(/행$/,''),msg:r.arvlMsg2||r.arvlMsg3||'',at:now+secs*1000,live:true};
+  }).filter(x=>typeof x.line==='number');
+}
+function demoRows(n){
+  const now=Date.now(),rows=[];const st=STATIONS[n];
+  st.lines.forEach(l=>{
+    const dirs=l===2?['외선','내선']:['상행','하행'];
+    dirs.forEach((d,di)=>{
+      const key=n+'|'+l+'|'+d;let q=S.queues[key]||(S.queues[key]=[]);
+      const head=l===2?200:(l>=8?320:250);const rnd=rng(hash(key)+Math.floor(now/7000));
+      while(q.length&&q[0]<now-4000)q.shift();
+      if(!q.length)q.push(now+(20+rnd()*head)*1000);
+      while(q.length<2)q.push(q[q.length-1]+(head*.8+rnd()*head*.5)*1000);
+      q.forEach((t,ti)=>{
+        let dest,msg;const secs=Math.max(0,Math.round((t-now)/1000));
+        if(l===2){const i=LOOP.indexOf(n);const nxt=LOOP[(i+(d==='외선'?1:-1)+43)%43];dest=(d==='외선'?'외선순환':'내선순환');msg=nxt+' 방면';}
+        else{dest=TERM[l][di]+'행';msg=(di?'하행':'상행')+' 방면';}
+        rows.push({line:l,dir:d,dest:dest.replace(/행$/,''),msg:msg,at:t,live:false,ti:ti});
+      });
+    });
+  });
+  return rows;
+}
+function statusMsg(r){
+  const s=Math.round((r.at-Date.now())/1000);
+  if(s<=15)return'열차 도착';if(s<=45)return'열차 진입 중';if(s<=100)return'전역 출발';
+  return r.live?(r.msg||'운행 중'):('약 '+Math.max(2,Math.round(s/130))+'정거장 전 · '+r.msg);
+}
+async function loadArrivals(force){
+  if(S.loading)return;S.loading=true;const n=S.station;
+  try{
+    let rows=null;
+    try{rows=await fetchLive(n);S.mode='live';S.modeWhy='서울시 API 응답 수신'}
+    catch(e){S.mode='demo';S.modeWhy=(e&&e.message)?e.message:'네트워크/CORS 제한';rows=null}
+    if(n!==S.station)return;
+    S.arr=(S.mode==='live'?rows:demoRows(n)).sort((a,b)=>a.at-b.at);
+    S.lastFetch=Date.now();
+  }finally{S.loading=false}
+  renderMode();renderArrivals();renderKPI();
+}
+function renderMode(){
+  const live=S.mode==='live';
+  ['#modeTag','#arrTag'].forEach(s=>{const e=$(s);e.textContent=live?'LIVE API':'DEMO DATA';e.className='tag '+(live?'live':'demo')});
+  $('.clock .d').querySelectorAll('.dot').forEach(x=>x.remove());
+  const d=document.createElement('span');d.className='dot'+(live?'':' demo');$('.clock .d').prepend(d);
+  $('#arrSrc').textContent=live?'서울시 열린데이터광장':'시뮬레이션 · '+(S.modeWhy.length>22?S.modeWhy.slice(0,22)+'…':S.modeWhy);
+  $('#footTxt').textContent='데이터 출처 서울시 열린데이터광장 realtimeStationArrival · '+CONFIG.REFRESH_SEC+'초 자동 갱신 · 혼잡도 '+CONFIG.CROWD_SERVICE+' · 현재 '+(live?'실시간(LIVE)':'시뮬레이션(DEMO)')+' 모드';
+}
+function fmt(s){s=Math.max(0,s);return pad(Math.floor(s/60))+':'+pad(s%60)}
+function tcls(s){return s<60?'t-red':s<120?'t-amb':'t-grn'}
+function renderArrivals(){
+  const list=$('#arrList');const now=Date.now();
+  const rows=S.arr.filter(r=>r.at>now-6000).slice(0,6);
+  if(!rows.length){list.innerHTML='<div class="empty">현재 도착 예정 열차 정보가 없습니다.<br>(운행 종료 시간이거나 API에서 제공하지 않는 역일 수 있어요)</div>';return}
+  list.innerHTML=rows.map((r,i)=>{
+    const s=Math.round((r.at-now)/1000);const lc=typeof r.line==='number'?LC[r.line]:'#56698a';
+    return '<div class="row'+(s<=15?' now':'')+'" data-i="'+i+'"><span class="lb" style="background:'+lc+'">'+r.line+'</span>'+
+      '<div style="min-width:0"><div class="dest">'+r.dest+'행</div><div class="msg">'+statusMsg(r)+'</div></div>'+
+      '<span class="dir">'+r.dir+'</span><span class="tm '+tcls(s)+'"><i></i><span>'+(s<=5?'도착':fmt(s))+'</span></span></div>';
+  }).join('');
+}
+function tickArrivals(){
+  const now=Date.now();
+  if(S.arr.length&&S.arr.some(r=>r.at<now-5000)){
+    if(S.mode==='demo'){S.arr=demoRows(S.station).sort((a,b)=>a.at-b.at)}
+    else S.arr=S.arr.filter(r=>r.at>=now-5000);
+    renderArrivals();
+  }
+  const rows=$('#arrList').querySelectorAll('.row');
+  const cur=S.arr.filter(r=>r.at>now-6000).slice(0,6);
+  rows.forEach((row,i)=>{const r=cur[i];if(!r)return;const s=Math.round((r.at-now)/1000);
+    const tm=row.querySelector('.tm');tm.className='tm '+tcls(s);tm.lastChild.textContent=s<=5?'도착':fmt(s);
+    row.classList.toggle('now',s<=15);row.querySelector('.msg').textContent=statusMsg(r)});
+  const nx=cur[0];if(nx){const s=Math.max(0,Math.round((nx.at-now)/1000));$('#k3').textContent=fmt(s);$('#k3').style.color=s<60?'var(--red)':s<120?'var(--amber)':'var(--green)'}
+}
+
+function curve(h,weekend){
+  const g=(m,s,a)=>a*Math.exp(-((h-m)*(h-m))/(2*s*s));
+  let v=weekend?0.09+g(14.5,3.4,.5)+g(19.5,2.2,.36):0.11+g(8.1,1.05,.86)+g(18.4,1.35,.92)+g(13,2.4,.3)+g(21.5,1.3,.16);
+  if(h<5)v*=.12;else if(h<6)v*=.12+(h-5)*.6;if(h>=23)v*=1-(h-23)*.5;
+  return clamp(v,.02,1);
+}
+async function fetchCrowd(n){
+  const key=S.crowdKey;if(!key||key==='sample')throw new Error('혼잡도 인증키 없음');
+  if(!S.crowdProxy&&location.protocol==='https:')throw new Error('https 페이지에서는 http API 호출이 차단돼요');
+  const base=(S.crowdProxy||'http://openapi.seoul.go.kr:8088').replace(/\/$/,'');
+  const name=n==='서울역'?n:apiName(n),svc=CONFIG.CROWD_SERVICE,now=new Date();
+  const months=[];for(let i=1;i<=6;i++){const m=new Date(now.getFullYear(),now.getMonth()-i,1);months.push(m.getFullYear()+pad(m.getMonth()+1))}
+  let lastErr='해당 역의 혼잡도 데이터가 없어요';
+  for(const ym of months){
+    const tot=new Array(24).fill(0);let hit=0;
+    for(const l of STATIONS[n].lines){
+      const url=base+'/'+encodeURIComponent(key)+'/json/'+svc+'/1/50/'+ym+'/'+encodeURIComponent(l+'호선')+'/'+encodeURIComponent(name);
+      const ctl=new AbortController(),to=setTimeout(()=>ctl.abort(),6500);let j;
+      try{const r=await fetch(url,{signal:ctl.signal});j=await r.json()}finally{clearTimeout(to)}
+      const code=(j&&(j.RESULT&&j.RESULT.CODE||j[svc]&&j[svc].RESULT&&j[svc].RESULT.CODE))||'';
+      if(code==='INFO-200'){continue}
+      if(code&&code!=='INFO-000'){const msg=(j.RESULT&&j.RESULT.MESSAGE)||(j[svc]&&j[svc].RESULT&&j[svc].RESULT.MESSAGE)||code;if(code==='INFO-100'||code==='ERROR-300')throw new Error(msg);lastErr=msg;continue}
+      const rows=(j&&j[svc]&&j[svc].row)||[];
+      rows.forEach(r=>{for(let hh=0;hh<=24;hh++){const v=(+r['HR_'+hh+'_GET_ON_NOPE'])+(+r['HR_'+hh+'_GET_OFF_NOPE']);if(!isNaN(v)){tot[hh%24]+=v;hit++}}});
+    }
+    const mx=Math.max.apply(null,tot);
+    if(hit&&mx>0)return{station:n,ym:ym,hours:tot.map(v=>Math.round(v/mx*100))};
+  }
+  throw new Error(lastErr);
+}
+function loadCrowd(n){
+  if(S.crowdCache[n]!==undefined){S.crowd=S.crowdCache[n];S.crowdWhy=S.crowd?'':'캐시된 실패';renderCrowdTag();return Promise.resolve()}
+  return fetchCrowd(n).then(c=>{S.crowdCache[n]=c;if(S.station===n){S.crowd=c;S.crowdWhy=''}},e=>{S.crowdCache[n]=null;if(S.station===n){S.crowd=null;S.crowdWhy=(e&&e.message)||'호출 실패'}})
+    .then(()=>{if(S.station===n){renderCrowdTag();renderGauge()}});
+}
+function renderCrowdTag(){
+  const t=$('#crowdTag');if(!t)return;const live=!!(S.crowd&&S.crowd.station===S.station);
+  t.textContent=live?'LIVE API':'SAMPLE MODEL';t.className='tag '+(live?'live':'');
+  t.title=live?('서울시 열린데이터광장 '+CONFIG.CROWD_SERVICE+' · '+S.crowd.ym.slice(0,4)+'.'+S.crowd.ym.slice(4)+' 기준 · 역 최대 시간대 대비 %'):('시뮬레이션 · '+S.crowdWhy);
+}
+function crowdAt(n,date){
+  if(S.crowd&&S.crowd.station===n)return S.crowd.hours[date.getHours()];
+  const h=date.getHours()+date.getMinutes()/60;const wk=date.getDay()===0||date.getDay()===6;return Math.round(clamp(hubOf(n)*curve(h,wk)*104+ (rng(hash(n)+date.getHours())()-.5)*4,2,100))}
+function level(p){return p<40?{n:'여유',c:'#34d399'}:p<65?{n:'보통',c:'#fbbf24'}:p<85?{n:'혼잡',c:'#f87171'}:{n:'매우 혼잡',c:'#ff3333',deep:true}}
+function hourPhase(d){const h=d.getHours();const wk=d.getDay()===0||d.getDay()===6;
+  if(wk)return h<10?'주말 오전 · 이용객이 적은 시간':h<20?'주말 나들이 시간대':'주말 저녁';
+  return h>=7&&h<10?'평일 출근 피크 시간대':h>=17&&h<20?'평일 퇴근 피크 시간대':h>=10&&h<17?'평일 낮 · 비교적 한산':h>=20&&h<23?'평일 늦은 저녁':'심야·새벽 · 운행 축소 시간'}
+function renderGauge(){
+  const n=S.station,now=new Date(),p=crowdAt(n,now),lv=level(p);
+  const svg=$('#gauge');svg.innerHTML='';
+  const cx=136,cy=128,r=100,C=Math.PI*r;
+  const arc=(a0,a1)=>{const x=(a)=>[cx+r*Math.cos(Math.PI*(1-a)),cy-r*Math.sin(Math.PI*(1-a))];const p0=x(a0),p1=x(a1);return'M'+p0[0]+' '+p0[1]+' A'+r+' '+r+' 0 0 1 '+p1[0]+' '+p1[1]};
+  const defs=el('defs',{},svg);const gl=el('filter',{id:'gg',x:'-40%',y:'-40%',width:'180%',height:'180%'},defs);el('feGaussianBlur',{stdDeviation:'4'},gl);
+  el('path',{d:arc(0,1),fill:'none',stroke:'rgba(99,179,237,.12)','stroke-width':16,'stroke-linecap':'round'},svg);
+  [[0,.4,'#34d399'],[.4,.65,'#fbbf24'],[.65,.85,'#f87171'],[.85,1,'#ff3333']].forEach(z=>el('path',{d:arc(z[0]+.006,z[1]-.006),fill:'none',stroke:z[2],'stroke-width':3,opacity:.5,'stroke-linecap':'butt'},svg));
+  const fg=el('path',{d:arc(0,1),fill:'none',stroke:lv.c,'stroke-width':16,'stroke-linecap':'round','stroke-dasharray':C,'stroke-dashoffset':C,style:'transition:stroke-dashoffset 1.1s cubic-bezier(.2,.7,.2,1)'},svg);
+  const glow=el('path',{d:arc(0,1),fill:'none',stroke:lv.c,'stroke-width':16,'stroke-linecap':'round','stroke-dasharray':C,'stroke-dashoffset':C,filter:'url(#gg)',opacity:.55,style:'transition:stroke-dashoffset 1.1s cubic-bezier(.2,.7,.2,1)'},svg);
+  requestAnimationFrame(()=>requestAnimationFrame(()=>{const off=C*(1-p/100);fg.setAttribute('stroke-dashoffset',off);glow.setAttribute('stroke-dashoffset',off)}));
+  [0,.25,.5,.75,1].forEach(a=>{const ang=Math.PI*(1-a),x0=cx+(r+15)*Math.cos(ang),y0=cy-(r+15)*Math.sin(ang);const t=el('text',{x:x0,y:y0+3,'text-anchor':'middle',style:'font:600 9px JetBrains Mono,monospace;fill:#56698a'},svg);t.textContent=Math.round(a*100)});
+  const ang=Math.PI*(1-p/100);
+  el('circle',{cx:cx,cy:cy,r:5,fill:'#e6edf7'},svg);
+  const nd=el('line',{x1:cx,y1:cy,x2:cx,y2:cy-(r-26),stroke:'#e6edf7','stroke-width':2.6,'stroke-linecap':'round',style:'transform-origin:'+cx+'px '+cy+'px;transition:transform 1.1s cubic-bezier(.2,.7,.2,1);transform:rotate(-90deg)'},svg);
+  requestAnimationFrame(()=>requestAnimationFrame(()=>{nd.style.transform='rotate('+(-90+180*p/100)+'deg)'}));
+  const num=el('text',{x:cx,y:cy-38,'text-anchor':'middle',style:'font:800 44px JetBrains Mono,monospace;fill:#fff;letter-spacing:-.04em'},svg);num.textContent=p;
+  const un=el('text',{x:cx+38,y:cy-38,style:'font:700 16px JetBrains Mono,monospace;fill:'+lv.c},svg);un.textContent='%';
+  const l=$('#lvl');l.textContent='● '+lv.n;l.style.color=lv.c;l.className='lvl'+(lv.deep?' deep':'');
+  const pk=Math.max.apply(null,Array.from({length:24},(_,h)=>crowdAt(n,new Date(now.getFullYear(),now.getMonth(),now.getDate(),h,30))));
+  $('#lvlTxt').innerHTML='<b>'+hourPhase(now)+'</b><br>오늘 예상 최고 '+pk+'% · 열차 내 여유 '+(p<40?'충분':p<65?'보통':'부족');
+  const hs=$('#hours');hs.innerHTML='';const cur=now.getHours();
+  for(let h=0;h<24;h++){const v=crowdAt(n,new Date(now.getFullYear(),now.getMonth(),now.getDate(),h,30));const L=level(v);const hgt=Math.max(3,v/100*40);
+    el('rect',{x:h*18.5+1,y:42-hgt,width:15.5,height:hgt,rx:3,fill:L.c,opacity:h===cur?1:.32},hs);
+    if(h===cur)el('rect',{x:h*18.5-1,y:0,width:19.5,height:44,rx:5,fill:'none',stroke:'#fff','stroke-width':1.2,opacity:.85},hs)}
+  $('#k5').innerHTML=p+'<small>%</small>';$('#k5').style.color=lv.c;$('#k5s').innerHTML='<b style="color:'+lv.c+'">● '+lv.n+'</b> · '+(S.crowd&&S.crowd.station===n?'API 지수':'추정');
+  $('#kpiCrowd').style.setProperty('--kc',lv.c);
+}
+
+function series(n){
+  const r=rng(hash(n)*7+13),today=new Date(),out=[];const base=hubOf(n)*72;
+  for(let i=29;i>=0;i--){const d=new Date(today.getFullYear(),today.getMonth(),today.getDate()-i);const wd=d.getDay();
+    const f=wd===0?.6:wd===6?.76:(wd===5?.97:1);const v=clamp(Math.round(base*f+(r()-.5)*14+ (Math.sin(i/4.2)*3)),8,99);out.push({d,v,wk:wd===0||wd===6})}
+  return out;
+}
+const WD=['일','월','화','수','목','금','토'];
+function renderTrend(){
+  const data=series(S.station),svg=$('#trend'),W=432,H=196,L=30,R=8,T=10,Bm=26,iw=W-L-R,ih=H-T-Bm;
+  svg.innerHTML='';const defs=el('defs',{},svg);
+  const g1=el('linearGradient',{id:'ta',x1:'0',y1:'0',x2:'0',y2:'1'},defs);el('stop',{offset:'0','stop-color':'#38bdf8','stop-opacity':.38},g1);el('stop',{offset:'1','stop-color':'#38bdf8','stop-opacity':0},g1);
+  const X=i=>L+iw*i/(data.length-1),Y=v=>T+ih*(1-v/100);
+  [[0,40,'#34d399'],[40,65,'#fbbf24'],[65,85,'#f87171'],[85,100,'#ff3333']].forEach(z=>el('rect',{x:L,y:Y(z[1]),width:iw,height:Y(z[0])-Y(z[1]),fill:z[2],opacity:.045},svg));
+  [0,40,65,85,100].forEach(v=>{el('line',{x1:L,y1:Y(v),x2:W-R,y2:Y(v),stroke:'rgba(99,179,237,.13)','stroke-dasharray':v%100?'3 4':'0'},svg);const t=el('text',{x:L-6,y:Y(v)+3.5,'text-anchor':'end',style:'font:600 9.5px JetBrains Mono,monospace;fill:#56698a'},svg);t.textContent=v});
+  const pts=data.map((p,i)=>[X(i),Y(p.v)]);
+  const d=spline(pts,false,.16);
+  el('path',{d:d+' L'+X(data.length-1)+' '+Y(0)+' L'+X(0)+' '+Y(0)+' Z',fill:'url(#ta)'},svg);
+  const line=el('path',{d:d,fill:'none',stroke:'#38bdf8','stroke-width':2.4,'stroke-linecap':'round',style:'filter:drop-shadow(0 0 6px rgba(56,189,248,.6))'},svg);
+  const len=line.getTotalLength?line.getTotalLength():0;if(len){line.style.strokeDasharray=len;line.style.strokeDashoffset=len;line.getBoundingClientRect();line.style.transition='stroke-dashoffset 1.2s ease';requestAnimationFrame(()=>line.style.strokeDashoffset=0)}
+  data.forEach((p,i)=>{if(i%5===0||i===29){const t=el('text',{x:X(i),y:H-8,'text-anchor':'middle',style:'font:600 9.5px JetBrains Mono,monospace;fill:#56698a'},svg);t.textContent=pad(p.d.getMonth()+1)+'.'+pad(p.d.getDate())}});
+  data.forEach((p,i)=>el('circle',{cx:X(i),cy:Y(p.v),r:p.wk?3.6:2.6,fill:p.wk?'#fbbf24':'#38bdf8',stroke:'#0b1424','stroke-width':1.2},svg));
+  const hov=el('circle',{r:6,fill:'none',stroke:'#fff','stroke-width':1.8,opacity:0},svg);
+  const tt=$('#tt'),cb=$('.cbody');
+  const ov=el('rect',{x:L,y:T,width:iw,height:ih,fill:'transparent'},svg);
+  ov.addEventListener('mousemove',e=>{const rc=svg.getBoundingClientRect();const x=(e.clientX-rc.left)/rc.width*W;const i=clamp(Math.round((x-L)/iw*(data.length-1)),0,data.length-1);const p=data[i],lv=level(p.v);
+    hov.setAttribute('cx',X(i));hov.setAttribute('cy',Y(p.v));hov.setAttribute('opacity',1);
+    const k=rc.width/W,cbr=cb.getBoundingClientRect(),sc=cbr.width/cb.offsetWidth;
+    tt.style.left=((rc.left-cbr.left)/sc+X(i)*k/sc)+'px';tt.style.top=((rc.top-cbr.top)/sc+Y(p.v)*k/sc)+'px';
+    tt.innerHTML=pad(p.d.getMonth()+1)+'.'+pad(p.d.getDate())+' ('+WD[p.d.getDay()]+') <b style="color:'+lv.c+'">'+p.v+'%</b> · '+lv.n;tt.classList.add('show')});
+  ov.addEventListener('mouseleave',()=>{hov.setAttribute('opacity',0);tt.classList.remove('show')});
+  const vs=data.map(p=>p.v),avg=Math.round(vs.reduce((a,b)=>a+b,0)/vs.length);
+  const mx=data[vs.indexOf(Math.max.apply(null,vs))],mn=data[vs.indexOf(Math.min.apply(null,vs))];
+  $('#sAvg').textContent=avg+'%';$('#sMax').textContent=mx.v+'%';$('#sMaxD').textContent=pad(mx.d.getMonth()+1)+'.'+pad(mx.d.getDate())+'('+WD[mx.d.getDay()]+')';
+  $('#sMin').textContent=mn.v+'%';$('#sMinD').textContent=pad(mn.d.getMonth()+1)+'.'+pad(mn.d.getDate())+'('+WD[mn.d.getDay()]+')';
+  S.avg30=avg;
+}
+
+function renderKPI(){
+  const n=S.station,st=STATIONS[n],now=Date.now();
+  const cur=S.arr.filter(r=>r.at>now-6000);
+  $('#k1').textContent=n;$('#k1').style.fontFamily='var(--font)';$('#k1').style.fontWeight=800;$('#k1s').textContent=st.lines.map(l=>l+'호선').join(' · ');
+  const up=cur.filter(r=>dirKind(r.dir)==='up').length,dn=cur.length-up;
+  $('#k2').innerHTML=cur.length+'<small>대</small>';$('#k2s').textContent='상행·내선 '+up+' / 하행·외선 '+dn;
+  const nx=cur[0];
+  if(nx){const s=Math.max(0,Math.round((nx.at-now)/1000));$('#k3').textContent=fmt(s);$('#k3').style.color=s<60?'var(--red)':s<120?'var(--amber)':'var(--green)';
+    $('#k3s').innerHTML='<i class="lb sm" style="background:'+(typeof nx.line==='number'?LC[nx.line]:'#56698a')+'">'+nx.line+'</i> '+nx.dest+'행 · '+nx.dir}
+  else{$('#k3').textContent='--:--';$('#k3').style.color='var(--muted)';$('#k3s').textContent='도착 예정 없음'}
+  $('#k4').innerHTML=st.lines.length+'<small>개 호선</small>';
+  $('#k4s').innerHTML=st.lines.map(l=>'<i class="lb sm" style="background:'+LC[l]+'">'+l+'</i>').join('');
+  const l0=st.lines[0];$('#plate').style.setProperty('--lc',LC[l0]);
+  const li=LOOP.indexOf(n);
+  $('#pCode').innerHTML=li>=0?'<div><b>'+(201+li)+'</b><span>2호선</span></div>':'<div><b>'+l0+'</b><span>호선</span></div>';
+  if(li>=0)$('#plate').style.setProperty('--lc',LC[2]);
+  $('#pStation').innerHTML=n+'<small>역</small>';
+  $('#pLines').innerHTML=st.lines.map(l=>'<span class="lb" style="background:'+LC[l]+'">'+l+'</span>').join('')+'<span class="cap">'+(st.lines.length>1?'환승역':'일반역')+'</span>';
+}
+
+function mm(s){return Math.floor(s/60)+'분 '+pad(s%60)+'초'}
+function buildAI(){
+  const n=S.station,st=STATIONS[n],now=new Date(),cur=S.arr.filter(r=>r.at>Date.now()-6000);
+  const p=crowdAt(n,now),lv=level(p),diff=p-(S.avg30||p);
+  const nx=cur[0];const nxs=nx?Math.max(0,Math.round((nx.at-Date.now())/1000)):0;
+  const f30=new Date(now.getTime()+30*60000),p30=crowdAt(n,f30),d30=p30-p;
+  let pkH=-1,pkV=-1;for(let h=now.getHours()+1;h<24;h++){const v=crowdAt(n,new Date(now.getFullYear(),now.getMonth(),now.getDate(),h,30));if(v>pkV){pkV=v;pkH=h}}
+  const s1=nx?('<b>'+n+'역</b>('+st.lines.map(l=>l+'호선').join('·')+')에 현재 <b>'+cur.length+'대</b>가 도착 예정이며, 가장 빠른 열차는 <b>'+nx.line+'호선 '+nx.dest+'행</b>으로 약 <b>'+mm(nxs)+'</b> 후 도착합니다.'):('<b>'+n+'역</b>은 현재 도착 예정 열차 정보가 없습니다. 운행 종료 시간대이거나 데이터 제공 범위 밖일 수 있어요.');
+  const s2='현재 혼잡도는 <b>'+p+'%('+lv.n+')</b>입니다. '+hourPhase(now)+'이며, 최근 30일 평균('+(S.avg30||'-')+'%) 대비 <b>'+(diff>=0?'+':'')+diff+'%p</b> '+(Math.abs(diff)<4?'비슷한 수준':diff>0?'높은 편':'낮은 편')+'입니다.';
+  const s3=p>=85?'승강장이 매우 붐빕니다. <b>승강장 양 끝 칸</b>이 상대적으로 여유롭고, 급하지 않다면 <b>5~10분 뒤</b> 열차나 인접 역 이용을 권장합니다.':p>=65?'다소 혼잡합니다. 환승 통로 정체를 피하려면 <b>이동 시간을 5분 이상 여유</b> 있게 잡고, 열차 중앙 칸은 피하세요.':p>=40?'무난한 편입니다. 다음 열차를 기다려도 좌석 확보 가능성이 있어요. 환승 동선은 평소대로 이동하면 됩니다.':'매우 여유롭습니다. 좌석에 앉아 이동하기 좋은 시간대이며, 환승 통로도 한산합니다.';
+  const s4='30분 뒤 예상 혼잡도는 <b>'+p30+'%</b>('+(d30>=4?'증가 추세':d30<=-4?'감소 추세':'보합')+')입니다. '+(pkH>0&&pkV>p?'오늘 남은 시간 중 <b>'+pad(pkH)+'시 전후</b>('+pkV+'%)가 가장 붐빌 전망입니다.':'오늘 남은 시간은 점차 한산해질 전망입니다.');
+  return[['현황 요약','#38bdf8',s1],['혼잡도 분석','#f87171',s2],['이용 추천','#34d399',s3],['향후 예측','#818cf8',s4]];
+}
+function runAI(){
+  clearInterval(S.aiTimer);const body=$('#aiBody'),btn=$('#aiRun');btn.disabled=true;btn.textContent='분석 중…';body.innerHTML='';
+  const items=buildAI();const ps=[];
+  items.forEach(it=>{const d=document.createElement('div');d.className='ai-sec';d.innerHTML='<div class="ai-h" style="--c:'+it[1]+'"><i></i>'+it[0]+'</div><p></p>';body.appendChild(d);ps.push(d.querySelector('p'))});
+  let si=0,ci=0;const plain=items.map(it=>it[2]);
+  function tokens(html){return html.match(/<[^>]+>|[\s\S]/g)||[]}
+  const toks=plain.map(tokens);let out=plain.map(()=>'');
+  S.aiTimer=setInterval(()=>{
+    if(si>=toks.length){clearInterval(S.aiTimer);ps.forEach(p=>p.classList.remove('caret'));btn.disabled=false;btn.textContent='다시 분석';return}
+    ps.forEach(p=>p.classList.remove('caret'));ps[si].classList.add('caret');
+    for(let k=0;k<3&&ci<toks[si].length;k++){out[si]+=toks[si][ci++]}
+    let h=out[si];const o=(h.match(/<b>/g)||[]).length,c=(h.match(/<\/b>/g)||[]).length;if(o>c)h+='</b>';ps[si].innerHTML=h;
+    if(ci>=toks[si].length){si++;ci=0}
+  },18);
+}
+function aiIdle(){
+  $('#aiBody').innerHTML='<div class="aiempty"><div><svg viewBox="0 0 24 24"><path d="M12 3l1.8 4.6L18.5 9l-4.7 1.4L12 15l-1.8-4.6L5.5 9l4.7-1.4z"/></svg>역을 선택하면 자동으로 분석하고,<br>“분석 실행” 버튼으로 언제든 다시 실행할 수 있어요.</div></div>';
+}
+
+function selectStation(n,silent){
+  if(!STATIONS[n])return;S.station=n;S.arr=[];S.queues={};S.crowd=null;S.crowdWhy='불러오는 중';renderCrowdTag();
+  markSelected();renderKPI();renderArrivals();renderGauge();renderTrend();
+  $('#arrList').innerHTML='<div class="empty">도착 정보를 불러오는 중…</div>';
+  Promise.all([loadArrivals(true),loadCrowd(n)]).then(()=>{clearTimeout(S.aiAuto);S.aiAuto=setTimeout(runAI,silent?900:450)});
+  resetRing();
+}
+let ringStart=Date.now();
+function resetRing(){ringStart=Date.now()}
+function tickRing(){
+  const sec=CONFIG.REFRESH_SEC,el_=(Date.now()-ringStart)/1000,left=Math.max(0,sec-el_);
+  $('#ringNum').textContent=Math.ceil(left);
+  $('#ringFg').style.strokeDashoffset=150.8*(1-left/sec);
+  if(el_>=sec){resetRing();loadArrivals()}
+}
+function tickClock(){
+  const d=new Date();$('#clk').innerHTML=pad(d.getHours())+'<i>:</i>'+pad(d.getMinutes())+'<i>:</i>'+pad(d.getSeconds());
+  $('#dt').textContent=d.getFullYear()+'.'+pad(d.getMonth()+1)+'.'+pad(d.getDate())+' '+WD[d.getDay()]+'요일';
+}
+
+function drawSky(){
+  const svg=$('#sky');svg.innerHTML='';const W=1856,H=62,r=rng(20260928);
+  const defs=el('defs',{},svg);
+  const bg=el('linearGradient',{id:'skb',x1:'0',y1:'0',x2:'0',y2:'1'},defs);el('stop',{offset:'0','stop-color':'#0a1224'},bg);el('stop',{offset:'1','stop-color':'#0d1a33'},bg);
+  el('rect',{width:W,height:H,fill:'url(#skb)'},svg);
+  for(let i=0;i<46;i++)el('circle',{cx:r()*W,cy:r()*24,r:r()*.9+.3,fill:'#cfe3ff',opacity:.35+r()*.5,class:'win',style:'animation-delay:'+(r()*4)+'s'},svg);
+  const mg=el('radialGradient',{id:'mn'},defs);el('stop',{offset:'0','stop-color':'#fff8d6','stop-opacity':.9},mg);el('stop',{offset:'1','stop-color':'#fff8d6','stop-opacity':0},mg);
+  el('circle',{cx:W-170,cy:20,r:24,fill:'url(#mn)'},svg);el('circle',{cx:W-170,cy:20,r:8.5,fill:'#fff3c4'},svg);
+  let x=0;while(x<W){const w=18+r()*34,h=14+r()*26;el('rect',{x:x,y:H-h-6,width:w,height:h+6,fill:'#101c36',opacity:.85},svg);x+=w+1.5}
+  x=-10;let wc=0;while(x<W){const w=14+r()*30,h=10+r()*30;el('rect',{x:x,y:H-h-4,width:w,height:h+4,fill:'#0a1428'},svg);
+    for(let wy=H-h-1;wy<H-8;wy+=6)for(let wx=x+3;wx<x+w-3;wx+=6){if(r()<.34&&wc<70){wc++;el('rect',{x:wx,y:wy,width:2.4,height:2.8,fill:r()<.7?'#ffd479':'#7dd3fc',opacity:.8,class:'win',style:'animation-delay:'+(r()*4)+'s'},svg)}else if(r()<.14)el('rect',{x:wx,y:wy,width:2.4,height:2.8,fill:'#ffd479',opacity:.55},svg)}
+    x+=w+2+r()*5}
+  el('rect',{x:0,y:H-5,width:W,height:5,fill:'#070d1a'},svg);el('line',{x1:0,y1:H-4,x2:W,y2:H-4,stroke:'#1d3a5f','stroke-width':1},svg);
+  const train=(cls,col,n)=>{const g=el('g',{class:cls},svg);for(let i=0;i<n;i++){const tx=i*44;
+      el('rect',{x:tx,y:H-17,width:41,height:12,rx:3.4,fill:'#dfe8f5'},g);el('rect',{x:tx,y:H-9,width:41,height:2.6,fill:col},g);
+      for(let k=0;k<4;k++)el('rect',{x:tx+4+k*9.2,y:H-14.5,width:6,height:4.4,rx:1,fill:'#3b6fa8'},g)}
+    el('rect',{x:n*44-1,y:H-14,width:3,height:6,rx:1.5,fill:'#fff7c2'},g)};
+  train('tr1','#00A84D',6);train('tr2','#00A5DE',5);
+}
+
+function fit(){const s=Math.min(innerWidth/1920,innerHeight/1080);$('#stage').style.transform='translate(-50%,-50%) scale('+s+')'}
+
+function init(){
+  initProfile();drawMap();buildChips();drawSky();
+  const dl=$('#stlist');Object.keys(STATIONS).sort((a,b)=>a.localeCompare(b,'ko')).forEach(n=>{const o=document.createElement('option');o.value=n;dl.appendChild(o)});
+  const q=$('#q');
+  const go=()=>{let v=q.value.trim().replace(/역$/,'');if(!v)return;if(STATIONS[v]){selectStation(v);q.blur()}else if(v==='서울'){selectStation('서울역')}else toast('“'+v+'”은(는) 지도에 등록된 역이 아니에요. 자동완성 목록에서 선택해 주세요.')};
+  q.addEventListener('keydown',e=>{if(e.key==='Enter')go()});q.addEventListener('change',go);
+  $('#aiRun').addEventListener('click',runAI);
+  $('#gear').addEventListener('click',()=>{$('#keyIn').value=S.key==='sample'?'':S.key;$('#proxyIn').value=S.proxy;$('#ckeyIn').value=S.crowdKey;$('#cproxyIn').value=S.crowdProxy;$('#modal').classList.add('show')});
+  $('#mCancel').addEventListener('click',()=>$('#modal').classList.remove('show'));
+  $('#modal').addEventListener('click',e=>{if(e.target.id==='modal')$('#modal').classList.remove('show')});
+  $('#mSave').addEventListener('click',()=>{store.set('sm_key',$('#keyIn').value.trim()||'sample');store.set('sm_proxy',$('#proxyIn').value.trim());store.set('sm_ckey',$('#ckeyIn').value.trim());store.set('sm_cproxy',$('#cproxyIn').value.trim());location.reload()});
+  addEventListener('resize',fit);fit();
+  aiIdle();tickClock();renderMode();
+  selectStation('강남',true);
+  setInterval(()=>{tickClock();tickArrivals();tickRing()},1000);
+  setInterval(renderGauge,60000);
+}
+init();
+})();
+</script>
+</body>
+</html>
