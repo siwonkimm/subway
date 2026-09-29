@@ -72,11 +72,6 @@ input{font:inherit;color:inherit}
 .pinfo{min-width:0;flex:1}
 .pinfo .nm{display:flex;align-items:baseline;gap:10px}
 .pinfo .nm b{font-size:24px;font-weight:800;letter-spacing:-.03em}
-.pinfo .nm span{font-size:12px;color:var(--muted)}
-.pgrid{display:grid;grid-template-columns:auto 1fr;gap:5px 12px;margin-top:9px;font-size:12.5px}
-.pgrid dt{font:600 10px/18px var(--mono);letter-spacing:.14em;color:var(--dim)}
-.pgrid dd{color:#c5d2e6;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.pgrid dd b{color:var(--ink);font-weight:600}
 
 /* ---------- KPI ---------- */
 .kpis{grid-column:1/-1;display:grid;grid-template-columns:repeat(5,1fr);gap:16px}
@@ -257,9 +252,7 @@ input{font:inherit;color:inherit}
       </div>
       <input type="file" id="photoFile" accept="image/*" hidden>
       <div class="pinfo">
-        <div class="nm"><b id="pName">-</b><span id="pRole">-</span></div>
-        <dl class="pgrid">
-        </dl>
+        <div class="nm"><b id="pName">-</b></div>
       </div>
     </div>
   </header>
@@ -417,10 +410,7 @@ const S={station:'강남',arr:[],mode:'demo',modeWhy:'',key:(store.get('sm_key')
   hidden:new Set(),lastFetch:0,queues:{},typing:null,aiTimer:null,loading:false};
 
 function initProfile(){
-  $('#pName').textContent=PROFILE.name;$('#pRole').textContent=PROFILE.role;
-  $('#pDept').innerHTML='<b>'+PROFILE.studentId+'</b> · '+PROFILE.dept;
-  $('#pCourse').textContent=PROFILE.course;
-  $('#pTask').innerHTML='<b>'+PROFILE.task+'</b> · '+PROFILE.date;
+  $('#pName').textContent=PROFILE.name;
   const img=$('#photo'),box=$('#photoBox');
   img.onload=()=>box.classList.add('has');img.onerror=()=>box.classList.remove('has');
   img.src=PROFILE.photo;
